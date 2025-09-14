@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>E-Service Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <style>
+      :root {
+        --slate-50: #f8fafc;
+        --slate-100: #f1f5f9;
+        --slate-200: #e2e8f0;
+        --slate-300: #cbd5e1;
+        --slate-400: #94a3b8;
+        --slate-500: #64748b;
+        --slate-600: #475569;
+        --slate-700: #334155;
+        --slate-800: #1e293b;
+        --slate-900: #0f172a;
+        --indigo-500: #6366f1;
+        --indigo-600: #4f46e5;
+        --indigo-700: #4338ca;
+        --teal-400: #2dd4bf;
+        --teal-500: #14b8a6;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: var(--slate-50);
+      }
+      /* Animation Keyframes */
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes scaleIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      
+      /* Animation utility classes */
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.5s ease-out forwards;
+        opacity: 0; /* Start hidden to prevent flash of unstyled content */
+      }
+      .animate-scale-in {
+        animation: scaleIn 0.3s ease-out forwards;
+      }
+
+      /* Background Pattern for Auth Page */
+      .bg-pattern {
+        background-color: #f8fafc;
+        background-image:
+          linear-gradient(rgba(17, 24, 39, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(17, 24, 39, 0.03) 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+      
+      /* New animated background for Welcome Page */
+      .animated-gradient-bg {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e2e8f0 50%, #d1d9e6 100%);
+        animation: gradient-light 12s ease infinite alternate;
+        background-size: 200% 200%;
+      }
+      @keyframes gradient-light {
+        from { background-position: 0% 0%; }
+        to { background-position: 100% 100%; }
+      }
+
+      /* Frosted glass effect for cards */
+      .card-frosted {
+        background-color: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+      }
+      
+      /* New background for main portal content */
+      .main-content-bg {
+         background-color: var(--slate-50);
+         background-image: radial-gradient(var(--slate-200) 1px, transparent 1px);
+         background-size: 1.5rem 1.5rem;
+      }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
+    "react/": "https://esm.sh/react@^19.1.1/",
+    "react": "https://esm.sh/react@^19.1.1",
+    "@google/genai": "https://esm.sh/@google/genai@^1.14.0",
+    "framer-motion": "https://esm.sh/framer-motion@^11.3.1",
+    "firebase/app": "https://esm.sh/firebase@10.12.3/app",
+    "firebase/auth": "https://esm.sh/firebase@10.12.3/auth",
+    "firebase/firestore": "https://esm.sh/firebase@10.12.3/firestore",
+    "firebase/": "https://esm.sh/firebase@^12.1.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
