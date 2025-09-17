@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ServiceRequest, Urgency } from '@/shared/types';
-import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, CalendarIcon, CameraIcon, XCircleIcon } from '@/components/common/icons';
+import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, CalendarIcon, CameraIcon, XCircleIcon, SpinnerIcon } from '@/components/common/icons';
 
-// --- Reusable Sub-components ---
+import { db } from '@/services/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+
 
 const FormInput: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, id, ...props }) => (
   <div>
@@ -27,6 +29,93 @@ const FormSelect: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { lab
   </div>
 );
 
+// This new version is timezone-safe and will always return the correct local date.
+const formatDateForFirestore = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// PASTE THIS FINAL, CORRECTED VERSION OF THE FUNCTION
+async function getAvailableSlots(serviceCategory: string, date: Date): Promise<string[]> {
+    const allPossibleSlots = ['09:00 - 11:00', '11:00 - 13:00', '13:00 - 15:00', '15:00 - 17:00'];
+    
+    // Timezone-safe date formatting
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
+
+    // 1. Find all technicians qualified for the job.
+    const usersRef = collection(db, 'users');
+    const techQuery = query(usersRef, where("skills", "array-contains", serviceCategory), where("role", "==", "technician"));
+    const techSnapshot = await getDocs(techQuery);
+    const qualifiedTechUids = techSnapshot.docs.map(doc => doc.id);
+
+    if (qualifiedTechUids.length === 0) {
+        return []; // No technicians have this skill
+    }
+
+    // This object will track which technicians are busy for each specific time slot.
+    const busyTechniciansBySlot: { [slot: string]: Set<string> } = {
+        [allPossibleSlots[0]]: new Set(),
+        [allPossibleSlots[1]]: new Set(),
+        [allPossibleSlots[2]]: new Set(),
+        [allPossibleSlots[3]]: new Set(),
+    };
+
+    // A) Check jobs they have already accepted (using non-mutating date copies).
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const requestsRef = collection(db, 'requests');
+    if (qualifiedTechUids.length > 0) {
+        const acceptedJobsQuery = query(
+            requestsRef,
+            where("assignedTechnicianUid", "in", qualifiedTechUids),
+            where("dateTime", ">=", startOfDay.toISOString()),
+            where("dateTime", "<=", endOfDay.toISOString())
+        );
+        const jobsSnapshot = await getDocs(acceptedJobsQuery);
+        jobsSnapshot.forEach(doc => {
+            const request = doc.data() as ServiceRequest;
+            const jobHour = new Date(request.dateTime).getHours();
+            if (jobHour >= 9 && jobHour < 11) busyTechniciansBySlot[allPossibleSlots[0]].add(request.assignedTechnicianUid!);
+            if (jobHour >= 11 && jobHour < 13) busyTechniciansBySlot[allPossibleSlots[1]].add(request.assignedTechnicianUid!);
+            if (jobHour >= 13 && jobHour < 15) busyTechniciansBySlot[allPossibleSlots[2]].add(request.assignedTechnicianUid!);
+            if (jobHour >= 15 && jobHour < 17) busyTechniciansBySlot[allPossibleSlots[3]].add(request.assignedTechnicianUid!);
+        });
+    }
+
+    // B) Check their manually blocked-off schedules.
+    if (qualifiedTechUids.length > 0) {
+        const schedulesRef = collection(db, 'technicianSchedules');
+        const scheduleQuery = query(schedulesRef, where("technicianUid", "in", qualifiedTechUids), where("date", "==", formattedDate));
+        const scheduleSnapshot = await getDocs(scheduleQuery);
+        scheduleSnapshot.forEach(doc => {
+            const schedule = doc.data();
+            if (schedule.unavailableSlots) {
+                schedule.unavailableSlots.forEach((slot: string) => {
+                    if (busyTechniciansBySlot[slot]) {
+                        busyTechniciansBySlot[slot].add(schedule.technicianUid);
+                    }
+                });
+            }
+        });
+    }
+
+    // 3. A slot is available if at least one qualified technician is free.
+    const finalAvailableSlots = allPossibleSlots.filter(slot => {
+        const totalQualified = qualifiedTechUids.length;
+        const totalBusy = busyTechniciansBySlot[slot].size;
+        return totalQualified > totalBusy;
+    });
+
+    return finalAvailableSlots;
+}
 // --- Main Modal Component ---
 
 interface NewRequestModalProps {
@@ -46,6 +135,34 @@ const NewRequestModal: React.FC<NewRequestModalProps> = ({ onClose, onSubmit }) 
   const [displayDate, setDisplayDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  // --- PASTE THE TWO NEW LINES HERE ---
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+  // --- This is the corrected version ---
+  useEffect(() => {
+    // Reset slots if the category or date is cleared
+    if (!serviceCategory || !selectedDate) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    setIsLoadingSlots(true);
+    // Clear previously selected time when date or category changes
+    setSelectedTime(null);
+
+    getAvailableSlots(serviceCategory, selectedDate)
+      .then(slots => {
+        setAvailableSlots(slots);
+      })
+      .catch(error => {
+        console.error("Error checking availability:", error);
+        setAvailableSlots([]); // Ensure we show no slots on error
+      })
+      .finally(() => {
+        setIsLoadingSlots(false);
+      });
+  }, [serviceCategory, selectedDate]); // This array tells React to re-run the effect ONLY when these two variables change
 
   const calendarDays = useMemo(() => {
     const year = displayDate.getFullYear();
@@ -178,48 +295,31 @@ const NewRequestModal: React.FC<NewRequestModalProps> = ({ onClose, onSubmit }) 
                   })}
                 </div>
               </div>
-              {selectedDate && (
+              {/* --- THIS IS THE UPDATED TIME SLOT SECTION --- */}
+              {selectedDate && serviceCategory ? (
                 <div className="mt-4 animate-fade-in">
                   <h4 className="font-semibold text-slate-700 mb-2">Available Slots for {selectedDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}:</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {timeSlots.map(slot => {
-                      // --- NEW LOGIC STARTS HERE ---
-                      const now = new Date();
-                      // Check if the currently selected calendar day is today
-                      const isToday = selectedDate?.toDateString() === now.toDateString();
-                      // Get the current hour in 24-hour format (e.g., 2 PM is 14)
-                      const currentHour = now.getHours();
-
-                      // Get the end hour of the time slot (e.g., for "09:00 - 11:00", this will be 11)
-                      const slotEndHour = parseInt(slot.split(' - ')[1].split(':')[0], 10);
-
-                      // A slot is in the past if it's today AND its end hour is less than or equal to the current hour
-                      const isSlotInPast = isToday && slotEndHour <= currentHour;
-                      // --- NEW LOGIC ENDS HERE ---
-
-                      return (
-                        <button
-                          type="button"
-                          key={slot}
-                          onClick={() => setSelectedTime(slot)}
-                          // Disable the button if the slot is in the past
-                          disabled={isSlotInPast}
-                          className={`p-2 rounded-lg text-sm font-medium border-2 transition-all
-          ${isSlotInPast
-                              // Apply disabled styles
-                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                              : selectedTime === slot
-                                // Apply selected styles
-                                ? 'bg-indigo-600 text-white border-indigo-600'
-                                // Apply default, clickable styles
-                                : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-500'
-                            }`}
-                        >
-                          {slot}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {isLoadingSlots ? (
+                    <div className="flex items-center justify-center h-24">
+                      <SpinnerIcon className="w-8 h-8 text-indigo-600 animate-spin" />
+                    </div>
+                  ) : availableSlots.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {availableSlots.map(slot => (
+                        <button type="button" key={slot} onClick={() => setSelectedTime(slot)}
+                          className={`p-2 rounded-lg text-sm font-medium border-2 transition-all ${selectedTime === slot ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-500'}`}
+                        >{slot}</button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 bg-slate-100 rounded-lg">
+                      <p className="text-sm font-medium text-slate-600">Sorry, no technicians are available on this day. Please select another date or service.</p>
+                    </div>
+                  )}
+                </div>
+              ) : selectedDate && (
+                <div className="mt-4 text-center p-4 bg-slate-100 rounded-lg">
+                  <p className="text-sm font-medium text-slate-600">Please select a service category to see availability.</p>
                 </div>
               )}
             </div>

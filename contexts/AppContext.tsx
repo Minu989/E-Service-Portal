@@ -98,12 +98,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   }, [pendingRequests, assignedRequests, userProfile]);
 
+  // --- THIS IS THE FINAL, CORRECTED VERSION ---
   useEffect(() => {
+    // We only run this if a user is logged in.
     if (!userProfile) {
       setConversations([]);
       return;
     }
 
+    // This query is universal. It works perfectly for both customers and technicians.
+    // It fetches all conversation documents where the user's ID is in the participants list.
     const conversationsQuery = query(
       collection(db, 'conversations'),
       where("participantUids", "array-contains", userProfile.uid),
@@ -119,8 +123,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, (error) => {
       console.error("Error in conversations snapshot listener (AppContext.tsx):", error);
     });
+
+    // This is the cleanup function to prevent memory leaks.
     return () => unsubscribe();
-  }, [userProfile]);
+
+  }, [userProfile]); // This hook re-runs whenever the user logs in or out.
 
 
   const handleNewRequest = useCallback(async (newRequestData: Omit<ServiceRequest, 'id' | 'status' | 'paymentStatus' | 'assignedTechnicianUid'>) => {

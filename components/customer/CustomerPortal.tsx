@@ -79,43 +79,44 @@ const CustomerHeader: React.FC<{
         </header>
     );
 });
+// ... other imports at the top of the file ...
+
+// --- REPLACE THE ENTIRE CustomerMessagesView COMPONENT ---
 
 const CustomerMessagesView: React.FC = () => {
     const { userProfile } = useAuth();
+    // This is the key: we get the conversations directly from the AppContext
     const { conversations } = useAppContext();
     const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // This hook correctly selects the first conversation from the global list
     useEffect(() => {
         if (!selectedConvId && conversations.length > 0) {
             setSelectedConvId(conversations[0].id);
         }
     }, [conversations, selectedConvId]);
 
+    // This hook fetches messages for the selected conversation (this logic is correct)
     useEffect(() => {
         if (!selectedConvId) {
             setMessages([]);
             return;
         }
-
         const messagesQuery = query(
             collection(db, 'conversations', selectedConvId, 'messages'),
             orderBy('timestamp', 'asc')
         );
-
-        const unsubscribe = onSnapshot(messagesQuery, (querySnapshot) => {
-            const messagesData: Message[] = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Message));
+        const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+            const messagesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
             setMessages(messagesData);
         });
-
         return () => unsubscribe();
     }, [selectedConvId]);
-    
+
+    // This hook scrolls to the latest message (this logic is correct)
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
@@ -129,9 +130,9 @@ const CustomerMessagesView: React.FC = () => {
         if (!newMessage.trim() || !selectedConvId || !userProfile) return;
 
         const messagesCollectionRef = collection(db, 'conversations', selectedConvId, 'messages');
-        
+
         try {
-            await addDoc(messagesCollectionRef, {
+            await addDoc(messagesCollection - Ref, {
                 senderUid: userProfile.uid,
                 text: newMessage,
                 timestamp: serverTimestamp(),
@@ -157,59 +158,84 @@ const CustomerMessagesView: React.FC = () => {
             <h2 className="text-3xl font-bold text-slate-800 mb-6">Messages</h2>
             <div className="bg-white rounded-xl shadow-sm flex-grow flex overflow-hidden border border-slate-200">
                 {conversations.length > 0 && userProfile ? (
-                    <div className="w-full flex flex-col">
-                        {selectedConversation ? (
-                            (() => {
-                                const otherParticipant = getOtherParticipant(selectedConversation);
-                                if (!otherParticipant) return null;
+                    <>
+                        {/* Contacts List Sidebar (This now uses the global conversations list) */}
+                        <div className="w-1/3 border-r border-slate-200 flex flex-col">
+                            <div className="p-4 font-semibold border-b border-slate-200">Your Technicians</div>
+                            <ul className="overflow-y-auto">
+                                {conversations.map((conv: Conversation) => {
+                                    const otherParticipant = getOtherParticipant(conv);
+                                    if (!otherParticipant) return null;
 
-                                return (
-                                    <>
-                                        <div className="p-4 border-b border-slate-200 flex items-center">
-                                            <img src={otherParticipant.avatarUrl} alt={otherParticipant.fullName} className="w-10 h-10 rounded-full mr-3" />
-                                            <div>
-                                                <h3 className="font-bold text-lg text-slate-800">{otherParticipant.fullName}</h3>
-                                                <p className="text-sm text-slate-500">Your Technician</p>
+                                    return (
+                                        <li
+                                            key={conv.id}
+                                            onClick={() => setSelectedConvId(conv.id)}
+                                            className={`p-4 cursor-pointer hover:bg-indigo-50 border-l-4 ${selectedConvId === conv.id ? 'border-indigo-600 bg-indigo-50' : 'border-transparent'}`}
+                                        >
+                                            <div className="flex items-center">
+                                                <img src={otherParticipant.avatarUrl} alt={otherParticipant.fullName} className="w-12 h-12 rounded-full mr-3" />
+                                                <div className="flex-grow overflow-hidden">
+                                                    <p className="font-bold text-slate-800 truncate">{otherParticipant.fullName}</p>
+                                                    <p className="text-sm text-slate-500 truncate">{conv.lastMessageText}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex-grow p-6 overflow-y-auto bg-slate-50">
-                                            <div className="space-y-4">
-                                                {messages.map((msg: Message) => (
-                                                    <div key={msg.id} className={`flex items-end gap-2 ${msg.senderUid === userProfile.uid ? 'justify-end' : 'justify-start'}`}>
-                                                        {msg.senderUid !== userProfile.uid && <img src={otherParticipant.avatarUrl} alt={otherParticipant.fullName} className="w-8 h-8 rounded-full" />}
-                                                        <div className={`max-w-md p-3 rounded-2xl ${msg.senderUid === userProfile.uid ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-200 text-slate-800 rounded-bl-none'}`}>
-                                                            <p>{msg.text}</p>
-                                                            <p className={`text-xs mt-1 text-right ${msg.senderUid === userProfile.uid ? 'text-indigo-200' : 'text-slate-400'}`}>{msg.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'sending...'}</p>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+
+                        {/* Chat Window Section (This logic is correct and remains the same) */}
+                        <div className="w-2/3 flex flex-col">
+                            {selectedConversation ? (
+                                (() => {
+                                    const otherParticipant = getOtherParticipant(selectedConversation);
+                                    if (!otherParticipant) return null;
+
+                                    return (
+                                        <>
+                                            <div className="p-4 border-b border-slate-200 flex items-center">
+                                                <img src={otherParticipant.avatarUrl} alt={otherParticipant.fullName} className="w-10 h-10 rounded-full mr-3" />
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-slate-800">{otherParticipant.fullName}</h3>
+                                                    <p className="text-sm text-slate-500">Your Technician</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex-grow p-6 overflow-y-auto bg-slate-50">
+                                                <div className="space-y-4">
+                                                    {messages.map((msg: Message) => (
+                                                        <div key={msg.id} className={`flex items-end gap-2 ${msg.senderUid === userProfile.uid ? 'justify-end' : 'justify-start'}`}>
+                                                            {msg.senderUid !== userProfile.uid && <img src={otherParticipant.avatarUrl} alt={otherParticipant.fullName} className="w-8 h-8 rounded-full" />}
+                                                            <div className={`max-w-md p-3 rounded-2xl ${msg.senderUid === userProfile.uid ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-200 text-slate-800 rounded-bl-none'}`}>
+                                                                <p>{msg.text}</p>
+                                                                <p className={`text-xs mt-1 text-right ${msg.senderUid === userProfile.uid ? 'text-indigo-200' : 'text-slate-400'}`}>{msg.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'sending...'}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                                <div ref={messagesEndRef} />
+                                                    ))}
+                                                    <div ref={messagesEndRef} />
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="p-4 bg-white border-t border-slate-200">
-                                            <form onSubmit={handleSendMessage} className="flex items-center space-x-3">
-                                                <input type="text" value={newMessage} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMessage(e.target.value)} placeholder="Type a message..." className="w-full bg-slate-100 border-transparent rounded-full py-3 px-5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                                                <button
-                                                    type="submit"
-                                                    aria-label="Send message"
-                                                    className="bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700 active:scale-95 transition-transform disabled:bg-slate-400"
-                                                    disabled={!newMessage.trim()}
-                                                >
-                                                    <PaperAirplaneIcon className="w-5 h-5" />
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </>
-                                );
-                            })()
-                        ) : (
-                            <div className="flex-grow flex items-center justify-center text-slate-500 p-8 text-center">
-                                <ChatIcon className="w-12 h-12 mx-auto text-slate-300 mb-4" />
-                                <h3 className="font-semibold text-lg">No Conversation Selected</h3>
-                                <p>Select a conversation from the list to start chatting.</p>
-                            </div>
-                        )}
-                    </div>
+                                            <div className="p-4 bg-white border-t border-slate-200">
+                                                <form onSubmit={handleSendMessage} className="flex items-center space-x-3">
+                                                    <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." className="w-full bg-slate-100 border-transparent rounded-full py-3 px-5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                                    <button type="submit" aria-label="Send message" className="bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700 active:scale-95 transition-transform disabled:bg-slate-400" disabled={!newMessage.trim()}>
+                                                        <PaperAirplaneIcon className="w-5 h-5" />
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </>
+                                    );
+                                })()
+                            ) : (
+                                <div className="flex-grow flex items-center justify-center text-slate-500 p-8 text-center">
+                                    <ChatIcon className="w-12 h-12 mx-auto text-slate-300 mb-4" />
+                                    <h3 className="font-semibold text-lg">No Conversation Selected</h3>
+                                    <p>Select a conversation from the list to start chatting.</p>
+                                </div>
+                            )}
+                        </div>
+                    </>
                 ) : (
                     <div className="flex-grow flex items-center justify-center text-slate-500 p-8 text-center">
                         <ChatIcon className="w-12 h-12 mx-auto text-slate-300 mb-4" />
@@ -221,6 +247,8 @@ const CustomerMessagesView: React.FC = () => {
         </div>
     );
 };
+
+// --- END OF REPLACEMENT ---
 
 const CustomerProfileView: React.FC<{
     userProfile: UserProfile;
